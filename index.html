@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hand Gesture Demo (MediaPipe Hands)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif; margin: 0; background: #0b1220; color: #e6e6e6; }
+    header { padding: 16px 20px; border-bottom: 1px solid #233; }
+    main { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 16px; }
+    .panel { background: #0f172a; border: 1px solid #223; border-radius: 14px; overflow: hidden; }
+    .panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid #223; font-size: 14px; color: #9fb3c8; }
+    .panel .body { padding: 12px 16px; }
+    #stage { position: relative; aspect-ratio: 4/3; background: #000; }
+    #output, #video { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #video { transform: scaleX(-1); /* ミラー表示 */ }
+    #output { pointer-events: none; }
+    .chip { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #142033; color: #9fdcff; font-size: 12px; }
+    .action-box { display: grid; place-items: center; height: 120px; border-radius: 12px; border: 1px solid #234; background: #0b1a2e; margin-top: 8px; font-size: 18px; }
+    .action-box.on { background: #12391a; border-color: #1f6f37; color: #b4f5c1; }
+    code { background: #111b2a; padding: 1px 6px; border-radius: 6px; }
+    footer { padding: 12px 16px; color: #8aa1b3; border-top: 1px solid #233; }
+    @media (max-width: 960px) {
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <strong>Hand Gesture Demo</strong>
+      <span class="chip">ピンチ（親指＋人差し指）でトグル</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>カメラ＆手検出</h2>
+      <div class="body">
+        <div id="stage" class="panel" style="border:none;">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="output"></canvas>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+          <button id="startBtn">カメラを開始</button>
+          <span id="status" class="chip">準備中</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2>アクション</h2>
+      <div class="body">
+        <div class="action-box" id="actionBox">OFF</div>
+        <ul style="margin-top:10px; line-height:1.7; color:#9fb3c8;">
+          <li>親指と人差し指の先を近づけて <b>ピンチ</b> → ON/OFF 切替</li>
+          <li>スマホでは、HTTPS 上で開いて <code>カメラを開始</code> を押してください</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <small>実装: WebRTC (<code>getUserMedia</code>) + MediaPipe Hands。カメラ映像はローカル処理のみで外部送信しません。</small>
+  </footer>
+
+  <!-- MediaPipe dependencies (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+  <script>
+    const videoEl = document.getElementById('video');
+    const canvasEl = document.getElementById('output');
+    const ctx = canvasEl.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const actionBox = document.getElementById('actionBox');
+
+    // レイアウト調整
+    function resize() {
+      const rect = document.getElementById('stage').getBoundingClientRect();
+      canvasEl.width = rect.width; canvasEl.height = rect.height;
+    }
+    window.addEventListener('resize', resize);
+
+    // ピンチ検出のための簡易ヘルパー
+    function isPinching(landmarks) {
+      // landmarks の座標は 0..1 の正規化。
+      const thumb = landmarks[4];   // 親指先端
+      const index = landmarks[8];   // 人差し指先端
+      const dx = thumb.x - index.x;
+      const dy = thumb.y - index.y;
+      const dist = Math.hypot(dx, dy);
+      return dist < 0.05; // しきい値（実機で必要に応じて調整）
+    }
+
+    let lastPinch = false;
+    let cooldown = 0; // 連打防止（フレーム数）
+
+    function toggleAction() {
+      actionBox.classList.toggle('on');
+      actionBox.textContent = actionBox.classList.contains('on') ? 'ON' : 'OFF';
+    }
+
+    function onResults(results) {
+      resize();
+      // ミラー表示用にコンテキストを反転
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.translate(-canvasEl.width, 0);
+
+      // 映像描画
+      ctx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
+
+      // 手のランドマーク描画
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          // 線
+          drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { lineWidth: 3 });
+          // 点
+          drawLandmarks(ctx, landmarks, { radius: 3 });
+
+          // ピンチ判定
+          const pinching = isPinching(landmarks);
+          if (cooldown > 0) cooldown--;
+          if (pinching && !lastPinch && cooldown === 0) {
+            toggleAction();
+            cooldown = 15; // およそ 0.25 秒分（60fps 想定）
+          }
+          lastPinch = pinching;
+        }
+      }
+      ctx.restore();
+    }
+
+    // MediaPipe Hands 設定
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7,
+    });
+    hands.onResults(onResults);
+
+    let camera;
+
+    async function startCamera() {
+      try {
+        statusEl.textContent = 'カメラ起動中…';
+        // iOS Safari 対策: ボタンから開始（ユーザー操作必須）
+        camera = new Camera(videoEl, {
+          onFrame: async () => { await hands.send({ image: videoEl }); },
+          width: 640,
+          height: 480,
+        });
+        await camera.start();
+        statusEl.textContent = '稼働中';
+        startBtn.disabled = true;
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = '起動エラー: ' + (e.message || e);
+      }
+    }
+
+    // モバイルでは前面カメラを優先したい場合は、以下のように getUserMedia によるストリームを割り当ててもOK。
+    // ただし Camera Utils と二重管理になるので、必要な場合のみ切替えてください。
+    // navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+
+    startBtn.addEventListener('click', startCamera);
+  </script>
+</body>
+</html>
