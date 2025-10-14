@@ -50,6 +50,11 @@
           <button id="startBtn">カメラを開始</button>
           <span id="status" class="chip status">準備中</span>
           <span id="countChip" class="chip">指: -</span>
+          <label for="viewMode" class="small">表示</label>
+          <select id="viewMode">
+            <option value="video">映像+骨格</option>
+            <option value="wire">骨格のみ</option>
+          </select>
           <button id="resetBtn">リセット</button>
         </div>
       </div>
@@ -92,10 +97,12 @@
     const startBtn = document.getElementById('startBtn');
     const resetBtn = document.getElementById('resetBtn');
     const countChip = document.getElementById('countChip');
+    const viewModeSel = document.getElementById('viewMode');
     const outerGrid = document.getElementById('outerGrid');
     const innerGrid = document.getElementById('innerGrid');
     const logEl = document.getElementById('log');
     const modeChip = document.getElementById('modeChip');
+    
 
     // ===== UI 準備 =====
     function makeButtons(container, prefix) {
@@ -154,6 +161,7 @@
     // ===== 選択ロジック（ホールドで押下） =====
     let mode = 'outer'; // 'outer' or 'inner'
     let selectedOuter = null;
+    let currentEffect = null; // { outer:1-5, inner:1-5 } or null
     let holdFrames = 0;
     const HOLD_THRESHOLD = 18; // ~0.3秒（60fps想定）
     let lastCount = 0;
@@ -161,6 +169,7 @@
     function resetAll() {
       mode = 'outer';
       selectedOuter = null;
+      currentEffect = null;
       setActive(outerGrid, 0);
       setActive(innerGrid, 0);
       modeChip.textContent = 'モード: 外側';
@@ -190,7 +199,8 @@
           setActive(outerGrid, 0);
           if (holdFrames >= HOLD_THRESHOLD) {
             selectedOuter = null;
-            logEl.textContent = 'キャンセル';
+            currentEffect = null; // 外側でのキャンセルは効果も解除
+            logEl.textContent = 'キャンセル（効果オフ）';
             holdFrames = 0;
           }
         }
@@ -217,7 +227,9 @@
         setActive(innerGrid, n);
         if (holdFrames >= HOLD_THRESHOLD) {
           flashPressed(innerGrid, n);
-          logEl.textContent = `選択: 外 ${selectedOuter} → 内 ${n}`;
+          logEl.textContent = `選択: 外 ${selectedOuter} → 内 ${n}（効果を適用）`;
+          // 現在の効果を記録（onResults で使用）
+          currentEffect = { outer: selectedOuter, inner: n };
           // ここで任意のアクションを実行
           holdFrames = 0;
         }
@@ -231,7 +243,15 @@
     function onResults(results) {
       resize();
       ctx.save(); ctx.scale(-1,1); ctx.translate(-canvasEl.width,0);
+      if (displayMode === 'video') {
+        // フィルター適用
+      ctx.filter = computeFilter(currentEffect);
       ctx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
+      ctx.filter = 'none';
+      } else {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+      }
 
       if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
         const landmarks = results.multiHandLandmarks[0];
@@ -247,7 +267,26 @@
       ctx.restore();
     }
 
+    // === 映像効果のマッピング ===
+    function computeFilter(effect) {
+      if (!effect) return 'none';
+      const o = effect.outer, i = effect.inner;
+      // 1: グレースケール, 2: セピア, 3: 色相回転, 4: ぼかし, 5: コントラスト/明るさ
+      const map = {
+        1: ['grayscale(0.2)','grayscale(0.4)','grayscale(0.6)','grayscale(0.8)','grayscale(1)'],
+        2: ['sepia(0.2)','sepia(0.4)','sepia(0.6)','sepia(0.8)','sepia(1)'],
+        3: ['hue-rotate(0deg) saturate(1.2)','hue-rotate(60deg) saturate(1.2)','hue-rotate(120deg) saturate(1.2)','hue-rotate(180deg) saturate(1.2)','hue-rotate(240deg) saturate(1.2)'],
+        4: ['blur(1px)','blur(2px)','blur(3px)','blur(4px)','blur(6px)'],
+        5: ['contrast(1.1) brightness(1.0)','contrast(1.3) brightness(1.05)','contrast(1.5) brightness(1.1)','contrast(1.7) brightness(1.15)','contrast(2.0) brightness(1.2)'],
+      };
+      return (map[o] && map[o][i-1]) || 'none';
+    }
+
     hands.onResults(onResults);
+
+    // 表示モード（映像+骨格 / 骨格のみ）
+    let displayMode = 'video';
+    viewModeSel.addEventListener('change', (e)=> { displayMode = e.target.value; });
 
     let camera;
     async function startCamera() {
