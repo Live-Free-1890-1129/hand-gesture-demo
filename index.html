@@ -3,34 +3,39 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hand Gesture Demo (MediaPipe Hands)</title>
+  <title>Hand Gesture Demo (指の本数でボタン選択 1→5)</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif; margin: 0; background: #0b1220; color: #e6e6e6; }
-    header { padding: 16px 20px; border-bottom: 1px solid #233; }
-    main { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 16px; }
-    .panel { background: #0f172a; border: 1px solid #223; border-radius: 14px; overflow: hidden; }
-    .panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid #223; font-size: 14px; color: #9fb3c8; }
+    :root { --bg:#0b1220; --panel:#0f172a; --line:#223; --txt:#e6e6e6; --muted:#9fb3c8; --chip:#142033; --accent:#9fdcff; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif; margin: 0; background: var(--bg); color: var(--txt); }
+    header { padding: 16px 20px; border-bottom: 1px solid var(--line); display:flex; gap:12px; align-items:center; }
+    main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--muted); }
     .panel .body { padding: 12px 16px; }
     #stage { position: relative; aspect-ratio: 4/3; background: #000; }
     #output, #video { position: absolute; inset: 0; width: 100%; height: 100%; }
-    #video { transform: scaleX(-1); /* ミラー表示 */ }
-    #output { pointer-events: none; }
-    .chip { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #142033; color: #9fdcff; font-size: 12px; }
-    .action-box { display: grid; place-items: center; height: 120px; border-radius: 12px; border: 1px solid #234; background: #0b1a2e; margin-top: 8px; font-size: 18px; }
-    .action-box.on { background: #12391a; border-color: #1f6f37; color: #b4f5c1; }
-    code { background: #111b2a; padding: 1px 6px; border-radius: 6px; }
-    footer { padding: 12px 16px; color: #8aa1b3; border-top: 1px solid #233; }
-    @media (max-width: 960px) {
-      main { grid-template-columns: 1fr; }
-    }
+    #video { transform: scaleX(-1); }
+    #output { pointer-events:none; }
+    .chip { display:inline-block; padding:4px 8px; border-radius:999px; background: var(--chip); color: var(--accent); font-size:12px; }
+
+    .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
+    .btn { border:1px solid #234; border-radius:12px; padding:12px 0; text-align:center; background:#0b1a2e; cursor:default; user-select:none; font-weight:600; }
+    .btn.active { background:#12391a; border-color:#1f6f37; color:#b4f5c1; }
+    .btn.pressed { outline: 2px solid #66d; box-shadow: 0 0 0 3px rgba(102,102,221,0.25) inset; }
+    .stack { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .small { font-size:12px; color: var(--muted); }
+    .divider { height:1px; background:var(--line); margin:10px 0; }
+    .status { font-variant-numeric: tabular-nums; }
+    @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header>
-    <div style="display:flex; gap:12px; align-items:center;">
-      <strong>Hand Gesture Demo</strong>
-      <span class="chip">ピンチ（親指＋人差し指）でトグル</span>
-    </div>
+    <strong>Hand Gesture Demo</strong>
+    <span class="chip">指の本数 1〜5 でボタン選択</span>
+    <span id="modeChip" class="chip">モード: 外側</span>
   </header>
 
   <main>
@@ -41,27 +46,37 @@
           <video id="video" autoplay playsinline muted></video>
           <canvas id="output"></canvas>
         </div>
-        <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+        <div class="stack">
           <button id="startBtn">カメラを開始</button>
-          <span id="status" class="chip">準備中</span>
+          <span id="status" class="chip status">準備中</span>
+          <span id="countChip" class="chip">指: -</span>
+          <button id="resetBtn">リセット</button>
         </div>
       </div>
     </section>
 
     <aside class="panel">
-      <h2>アクション</h2>
+      <h2>メニュー（外側1〜5 → 内側1〜5）</h2>
       <div class="body">
-        <div class="action-box" id="actionBox">OFF</div>
-        <ul style="margin-top:10px; line-height:1.7; color:#9fb3c8;">
-          <li>親指と人差し指の先を近づけて <b>ピンチ</b> → ON/OFF 切替</li>
-          <li>スマホでは、HTTPS 上で開いて <code>カメラを開始</code> を押してください</li>
-        </ul>
+        <div class="small">指の本数を<span style="font-weight:700;">一定時間ホールド</span>すると押下として認識します。</div>
+        <div class="divider"></div>
+        <div>
+          <div class="small">外側メニュー</div>
+          <div id="outerGrid" class="grid" aria-label="outer-buttons"></div>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div class="small">内側メニュー（外側で選択後に有効）</div>
+          <div id="innerGrid" class="grid" aria-label="inner-buttons"></div>
+        </div>
+        <div class="divider"></div>
+        <div class="small" id="log">選択: なし</div>
       </div>
     </aside>
   </main>
 
-  <footer>
-    <small>実装: WebRTC (<code>getUserMedia</code>) + MediaPipe Hands。カメラ映像はローカル処理のみで外部送信しません。</small>
+  <footer class="small" style="padding:12px 16px; border-top:1px solid var(--line); color:var(--muted);">
+    実装: WebRTC (<code>getUserMedia</code>) + MediaPipe Hands。カメラ映像はローカル処理のみで外部送信しません。
   </footer>
 
   <!-- MediaPipe dependencies (CDN) -->
@@ -75,100 +90,149 @@
     const ctx = canvasEl.getContext('2d');
     const statusEl = document.getElementById('status');
     const startBtn = document.getElementById('startBtn');
-    const actionBox = document.getElementById('actionBox');
+    const resetBtn = document.getElementById('resetBtn');
+    const countChip = document.getElementById('countChip');
+    const outerGrid = document.getElementById('outerGrid');
+    const innerGrid = document.getElementById('innerGrid');
+    const logEl = document.getElementById('log');
+    const modeChip = document.getElementById('modeChip');
 
-    // レイアウト調整
+    // ===== UI 準備 =====
+    function makeButtons(container, prefix) {
+      container.innerHTML = '';
+      for (let i=1;i<=5;i++) {
+        const b = document.createElement('div');
+        b.className = 'btn';
+        b.dataset.value = i;
+        b.id = `${prefix}-${i}`;
+        b.textContent = `${prefix === 'outer' ? '外' : '内'}:${i}`;
+        container.appendChild(b);
+      }
+    }
+    makeButtons(outerGrid, 'outer');
+    makeButtons(innerGrid, 'inner');
+
+    function setActive(container, n) {
+      Array.from(container.children).forEach(el => {
+        el.classList.toggle('active', Number(el.dataset.value) === n);
+      });
+    }
+    function flashPressed(container, n) {
+      const el = Array.from(container.children).find(e => Number(e.dataset.value) === n);
+      if (!el) return;
+      el.classList.add('pressed');
+      setTimeout(()=> el.classList.remove('pressed'), 250);
+    }
+
+    // ===== レイアウト調整 =====
     function resize() {
       const rect = document.getElementById('stage').getBoundingClientRect();
       canvasEl.width = rect.width; canvasEl.height = rect.height;
     }
     window.addEventListener('resize', resize);
 
-    // ピンチ検出のための簡易ヘルパー
-    function isPinching(landmarks) {
-      // landmarks の座標は 0..1 の正規化。
-      const thumb = landmarks[4];   // 親指先端
-      const index = landmarks[8];   // 人差し指先端
-      const dx = thumb.x - index.x;
-      const dy = thumb.y - index.y;
-      const dist = Math.hypot(dx, dy);
-      return dist < 0.05; // しきい値（実機で必要に応じて調整）
+    // ===== 指の本数カウント =====
+    // 参考: インデックス〜小指は tip.y < pip.y で伸展とみなす。親指は tip.x と ip.x の関係（利き手で判定）。
+    function isFingerUp(tip, pip) { return tip.y < pip.y - 0.02; }
+    function isThumbUp(landmarks, handedness) {
+      const tip = landmarks[4]; // 親指先端
+      const ip  = landmarks[3]; // 親指IP
+      // 右手: 親指が左方向(小さいx)に開く。左手: 右方向(大きいx)。
+      const isRight = handedness === 'Right';
+      return isRight ? (tip.x < ip.x - 0.02) : (tip.x > ip.x + 0.02);
+    }
+    function countFingers(landmarks, handedness) {
+      let count = 0;
+      if (isThumbUp(landmarks, handedness)) count++;
+      if (isFingerUp(landmarks[8], landmarks[6])) count++;   // 人差し指
+      if (isFingerUp(landmarks[12], landmarks[10])) count++; // 中指
+      if (isFingerUp(landmarks[16], landmarks[14])) count++; // 薬指
+      if (isFingerUp(landmarks[20], landmarks[18])) count++; // 小指
+      return count;
     }
 
-    let lastPinch = false;
-    let cooldown = 0; // 連打防止（フレーム数）
+    // ===== 選択ロジック（ホールドで押下） =====
+    let mode = 'outer'; // 'outer' or 'inner'
+    let selectedOuter = null;
+    let holdFrames = 0;
+    const HOLD_THRESHOLD = 18; // ~0.3秒（60fps想定）
+    let lastCount = 0;
 
-    function toggleAction() {
-      actionBox.classList.toggle('on');
-      actionBox.textContent = actionBox.classList.contains('on') ? 'ON' : 'OFF';
+    function resetAll() {
+      mode = 'outer';
+      selectedOuter = null;
+      setActive(outerGrid, 0);
+      setActive(innerGrid, 0);
+      modeChip.textContent = 'モード: 外側';
+      logEl.textContent = '選択: なし';
     }
+
+    resetBtn.addEventListener('click', resetAll);
+
+    function processCount(n) {
+      countChip.textContent = `指: ${n}`;
+      if (n < 1 || n > 5) { holdFrames = 0; setActive(outerGrid, 0); setActive(innerGrid, 0); return; }
+
+      if (n === lastCount) holdFrames++; else holdFrames = 1;
+      lastCount = n;
+
+      if (mode === 'outer') {
+        setActive(outerGrid, n);
+        if (holdFrames >= HOLD_THRESHOLD) {
+          selectedOuter = n;
+          flashPressed(outerGrid, n);
+          mode = 'inner';
+          modeChip.textContent = `モード: 内側 (外:${n})`;
+          holdFrames = 0; // 次の階層へ
+        }
+      } else {
+        // inner 階層
+        setActive(innerGrid, n);
+        if (holdFrames >= HOLD_THRESHOLD) {
+          flashPressed(innerGrid, n);
+          logEl.textContent = `選択: 外 ${selectedOuter} → 内 ${n}`;
+          // ここで任意のアクションを実行
+          // e.g., navigate(`/page/${selectedOuter}/${n}`) など
+          holdFrames = 0;
+        }
+      }
+    }
+
+    // ===== MediaPipe Hands 設定 =====
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
     function onResults(results) {
       resize();
-      // ミラー表示用にコンテキストを反転
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.translate(-canvasEl.width, 0);
-
-      // 映像描画
+      ctx.save(); ctx.scale(-1,1); ctx.translate(-canvasEl.width,0);
       ctx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
 
-      // 手のランドマーク描画
-      if (results.multiHandLandmarks) {
-        for (const landmarks of results.multiHandLandmarks) {
-          // 線
-          drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { lineWidth: 3 });
-          // 点
-          drawLandmarks(ctx, landmarks, { radius: 3 });
-
-          // ピンチ判定
-          const pinching = isPinching(landmarks);
-          if (cooldown > 0) cooldown--;
-          if (pinching && !lastPinch && cooldown === 0) {
-            toggleAction();
-            cooldown = 15; // およそ 0.25 秒分（60fps 想定）
-          }
-          lastPinch = pinching;
-        }
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
+        const landmarks = results.multiHandLandmarks[0];
+        const handedness = (results.multiHandedness && results.multiHandedness[0] && results.multiHandedness[0].label) || 'Right';
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { lineWidth: 3 });
+        drawLandmarks(ctx, landmarks, { radius: 3 });
+        const n = countFingers(landmarks, handedness);
+        processCount(n);
+      } else {
+        holdFrames = 0; lastCount = 0; setActive(outerGrid, 0); setActive(innerGrid, 0);
+        countChip.textContent = '指: -';
       }
       ctx.restore();
     }
 
-    // MediaPipe Hands 設定
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7,
-    });
     hands.onResults(onResults);
 
     let camera;
-
     async function startCamera() {
       try {
         statusEl.textContent = 'カメラ起動中…';
-        // iOS Safari 対策: ボタンから開始（ユーザー操作必須）
-        camera = new Camera(videoEl, {
-          onFrame: async () => { await hands.send({ image: videoEl }); },
-          width: 640,
-          height: 480,
-        });
+        camera = new Camera(videoEl, { onFrame: async () => { await hands.send({ image: videoEl }); }, width: 640, height: 480 });
         await camera.start();
         statusEl.textContent = '稼働中';
         startBtn.disabled = true;
-      } catch (e) {
-        console.error(e);
-        statusEl.textContent = '起動エラー: ' + (e.message || e);
-      }
+      } catch (e) { console.error(e); statusEl.textContent = '起動エラー: ' + (e.message || e); }
     }
-
-    // モバイルでは前面カメラを優先したい場合は、以下のように getUserMedia によるストリームを割り当ててもOK。
-    // ただし Camera Utils と二重管理になるので、必要な場合のみ切替えてください。
-    // navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
 
     startBtn.addEventListener('click', startCamera);
   </script>
