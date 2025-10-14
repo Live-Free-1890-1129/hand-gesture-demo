@@ -34,7 +34,7 @@
 <body>
   <header>
     <strong>Hand Gesture Demo</strong>
-    <span class="chip">指の本数 1〜5 でボタン選択</span>
+    <span class="chip">指の本数 0〜5（0=戻る/キャンセル, 1〜5=選択）</span>
     <span id="modeChip" class="chip">モード: 外側</span>
   </header>
 
@@ -171,7 +171,34 @@
 
     function processCount(n) {
       countChip.textContent = `指: ${n}`;
-      if (n < 1 || n > 5) { holdFrames = 0; setActive(outerGrid, 0); setActive(innerGrid, 0); return; }
+
+      // 0本は「戻る/キャンセル」ジェスチャーとして扱う
+      if (n === 0) {
+        holdFrames = (lastCount === 0) ? holdFrames + 1 : 1;
+        lastCount = 0;
+        if (mode === 'inner') {
+          setActive(innerGrid, 0);
+          if (holdFrames >= HOLD_THRESHOLD) {
+            // 戻る：内側→外側
+            mode = 'outer';
+            modeChip.textContent = 'モード: 外側';
+            setActive(outerGrid, 0);
+            logEl.textContent = '戻る / キャンセル';
+            holdFrames = 0;
+          }
+        } else { // outer モード
+          setActive(outerGrid, 0);
+          if (holdFrames >= HOLD_THRESHOLD) {
+            selectedOuter = null;
+            logEl.textContent = 'キャンセル';
+            holdFrames = 0;
+          }
+        }
+        return;
+      }
+
+      // 1〜5 以外は無視
+      if (n < 1 || n > 5) { holdFrames = 0; setActive(outerGrid, 0); setActive(innerGrid, 0); lastCount = n; return; }
 
       if (n === lastCount) holdFrames++; else holdFrames = 1;
       lastCount = n;
@@ -192,7 +219,6 @@
           flashPressed(innerGrid, n);
           logEl.textContent = `選択: 外 ${selectedOuter} → 内 ${n}`;
           // ここで任意のアクションを実行
-          // e.g., navigate(`/page/${selectedOuter}/${n}`) など
           holdFrames = 0;
         }
       }
