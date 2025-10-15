@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hand Gesture Demo（外1〜5=効果選択／内=向きで%適用）</title>
+  <title>Hand Gesture Demo（選択1・選択2は独立／各1〜5でエフェクト設定）</title>
   <style>
     :root { --bg:#0b1220; --panel:#0f172a; --line:#223; --txt:#e6e6e6; --muted:#9fb3c8; --chip:#142033; --accent:#9fdcff; }
     * { box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif; margin: 0; background: var(--bg); color: var(--txt); }
     header { padding: 16px 20px; border-bottom: 1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; }
+    main { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
     .panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--muted); }
     .panel .body { padding: 12px 16px; }
@@ -36,9 +36,10 @@
 <body>
   <header>
     <strong>Hand Gesture Demo</strong>
-    <span class="chip">外側1〜5: 効果を選ぶ</span>
-    <span class="chip">内側1〜5: 指の向きで%決めて適用（上=0%／下=100%）</span>
-    <span id="modeChip" class="chip">モード: 外側（握りこぶし1秒で切替／5秒で初期化）</span>
+    <span class="chip">選択1・選択2は独立</span>
+    <span class="chip">各 1〜5 = エフェクト種類</span>
+    <span class="chip">指の向き：上=0%／下=100%</span>
+    <span id="modeChip" class="chip">操作対象: 選択1（握りこぶし1秒で切替／5秒で初期化）</span>
   </header>
 
   <main>
@@ -60,31 +61,31 @@
     </section>
 
     <aside class="panel">
-      <h2>メニュー（外側→内側で適用。設定は保持）</h2>
+      <h2>選択1・選択2（独立）— 1〜5: 効果種類／指の向きで%を適用</h2>
       <div class="body">
-        <div class="small">0本（握りこぶし）を<strong>1秒</strong>で内↔外切替、<strong>5秒</strong>で全初期化。<br>内側では、指の<strong>向き</strong>で<strong>0%（上）↔100%（下）</strong>を決め、1〜5のどれかを押して適用します。</div>
+        <div class="small">握りこぶし（0本）<strong>1秒</strong>で「操作対象」を 選択1 ↔ 選択2 に切替。<strong>5秒</strong>で全て初期化。<br>選択中（ハイライト側）で 1〜5 をホールド確定すると、指の<strong>向き</strong>から算出した<strong>%</strong>がその効果に適用されます。設定は保持・合成されます。</div>
         <div class="divider"></div>
-        <div class="small">外側メニュー（効果チャンネル）</div>
-        <div id="outerGrid" class="grid" aria-label="outer-buttons"></div>
+        <div class="small">選択1</div>
+        <div id="sel1Grid" class="grid" aria-label="select1-buttons"></div>
         <div class="divider"></div>
-        <div class="small">内側メニュー（適用トリガー）</div>
-        <div id="innerGrid" class="grid" aria-label="inner-buttons"></div>
+        <div class="small">選択2</div>
+        <div id="sel2Grid" class="grid" aria-label="select2-buttons"></div>
         <div class="divider"></div>
         <div class="kv small">
-          <div>グレースケール</div><div class="bar"><span id="bar-gray"></span></div>
-          <div>セピア</div><div class="bar"><span id="bar-sepia"></span></div>
-          <div>色相回転</div><div class="bar"><span id="bar-hue"></span></div>
-          <div>ぼかし</div><div class="bar"><span id="bar-blur"></span></div>
-          <div>コントラスト</div><div class="bar"><span id="bar-contrast"></span></div>
-          <div>明るさ</div><div class="bar"><span id="bar-bright"></span></div>
+          <div>1: グレースケール</div><div class="bar"><span id="bar-gray"></span></div>
+          <div>2: セピア</div><div class="bar"><span id="bar-sepia"></span></div>
+          <div>3: 色相回転</div><div class="bar"><span id="bar-hue"></span></div>
+          <div>4: ぼかし</div><div class="bar"><span id="bar-blur"></span></div>
+          <div>5: コントラスト</div><div class="bar"><span id="bar-contrast"></span></div>
+          <div>明るさ（自動補助）</div><div class="bar"><span id="bar-bright"></span></div>
         </div>
         <div class="divider"></div>
-        <div class="small" id="log">選択: なし（効果 すべて初期値）</div>
+        <div class="small" id="log">操作対象: 選択1 / 設定: 初期値</div>
       </div>
     </aside>
   </main>
 
-  <footer class="small" style="padding:12px 16px; border-top:1px solid var(--line); color:var(--muted);">
+  <footer class="small" style="padding:12px 16px; border-top:1px solid var(--line); color:#8aa1b3;">
     実装: WebRTC (<code>getUserMedia</code>) + MediaPipe Hands。カメラ映像はローカル処理のみで外部送信しません。
   </footer>
 
@@ -102,8 +103,8 @@
     const resetBtn = document.getElementById('resetBtn');
     const countChip = document.getElementById('countChip');
     const pctChip = document.getElementById('pctChip');
-    const outerGrid = document.getElementById('outerGrid');
-    const innerGrid = document.getElementById('innerGrid');
+    const sel1Grid = document.getElementById('sel1Grid');
+    const sel2Grid = document.getElementById('sel2Grid');
     const logEl = document.getElementById('log');
     const modeChip = document.getElementById('modeChip');
 
@@ -117,19 +118,19 @@
     };
 
     // ===== UI 準備 =====
-    function makeButtons(container, prefix) {
+    function makeButtons(container, label) {
       container.innerHTML = '';
       for (let i=1;i<=5;i++) {
         const b = document.createElement('div');
         b.className = 'btn';
         b.dataset.value = i;
-        b.id = `${prefix}-${i}`;
-        b.textContent = `${prefix === 'outer' ? '外' : '内'}:${i}`;
+        b.id = `${label}-${i}`;
+        b.textContent = `${label === 'sel1' ? '選1' : '選2'}:${i}`;
         container.appendChild(b);
       }
     }
-    makeButtons(outerGrid, 'outer');
-    makeButtons(innerGrid, 'inner');
+    makeButtons(sel1Grid, 'sel1');
+    makeButtons(sel2Grid, 'sel2');
 
     function setActive(container, n) {
       Array.from(container.children).forEach(el => {
@@ -150,7 +151,7 @@
     }
     window.addEventListener('resize', resize);
 
-    // ===== 指カウント（同じ）＋ 向き→% =====
+    // ===== 指カウント＋向き% =====
     function isFingerUp(tip, pip) { return tip.y < pip.y - 0.02; }
     function isThumbUp(landmarks, handedness) {
       const tip = landmarks[4]; const ip  = landmarks[3];
@@ -176,15 +177,14 @@
     }
 
     // ===== 状態 =====
-    let mode = 'outer'; // 'outer' or 'inner'
-    let selectedOuter = null; // 1..5
+    let active = 'sel1'; // 操作対象: 'sel1' or 'sel2'
     let holdFrames = 0; // 数字ホールド
     const HOLD_THRESHOLD = 18; // ~0.3秒
     let lastCount = 0;
 
     let fistFrames = 0; // 握りこぶし連続フレーム
-    const FIST_TOGGLE = 60; // 1秒
-    const FIST_RESET = 300; // 5秒
+    const FIST_TOGGLE = 60; // 1秒で対象切替
+    const FIST_RESET = 300; // 5秒で全初期化
 
     // エフェクト合成（0..100%）
     const effects = { grayscale: 0, sepia: 0, hue: 0, blur: 0, contrast: 0, brightness: 100 };
@@ -199,18 +199,17 @@
     }
 
     function resetAll() {
-      mode = 'outer';
-      selectedOuter = null;
-      setActive(outerGrid, 0);
-      setActive(innerGrid, 0);
+      active = 'sel1';
+      setActive(sel1Grid, 0);
+      setActive(sel2Grid, 0);
       effects.grayscale = 0;
       effects.sepia = 0;
       effects.hue = 0;
       effects.blur = 0;
       effects.contrast = 0;
       effects.brightness = 100;
-      modeChip.textContent = 'モード: 外側（握りこぶし1秒で切替／5秒で初期化）';
-      logEl.textContent = '選択: なし（効果 すべて初期値）';
+      modeChip.textContent = '操作対象: 選択1（握りこぶし1秒で切替／5秒で初期化）';
+      logEl.textContent = '操作対象: 選択1 / 設定: 初期値';
       updateBars();
     }
 
@@ -233,47 +232,36 @@
     function processCount(n, landmarks) {
       countChip.textContent = `指: ${n}`;
 
-      // 0本（握りこぶし）: モード切替/初期化
+      // 0本（握りこぶし）: 切替/初期化
       if (n === 0) {
         fistFrames++;
         holdFrames = 0; // 数字ホールドはリセット
         lastCount = 0;
         if (fistFrames >= FIST_RESET) { resetAll(); fistFrames = 0; return; }
         if (fistFrames === FIST_TOGGLE) {
-          if (mode === 'outer' && selectedOuter != null) { mode = 'inner'; modeChip.textContent = `モード: 内側 (外:${selectedOuter})`; }
-          else { mode = 'outer'; modeChip.textContent = 'モード: 外側（握りこぶし1秒で切替／5秒で初期化）'; setActive(innerGrid,0); }
-          logEl.textContent = (mode==='outer') ? 'モード切替: 外側へ' : 'モード切替: 内側へ';
+          active = (active === 'sel1') ? 'sel2' : 'sel1';
+          modeChip.textContent = `操作対象: ${active === 'sel1' ? '選択1' : '選択2'}（握りこぶし1秒で切替／5秒で初期化）`;
+          logEl.textContent = `操作対象を ${active === 'sel1' ? '選択1' : '選択2'} に切替`;
         }
         return;
       } else { fistFrames = 0; }
 
-      if (n < 1 || n > 5) { holdFrames = 0; setActive(outerGrid, 0); setActive(innerGrid, 0); lastCount = n; return; }
+      // 1〜5 以外
+      if (n < 1 || n > 5) { holdFrames = 0; setActive(sel1Grid, 0); setActive(sel2Grid, 0); lastCount = n; return; }
 
-      if (mode === 'outer') {
-        // 外: チャンネル選択
-        setActive(outerGrid, n);
-        if (n === lastCount) holdFrames++; else holdFrames = 1;
-        lastCount = n;
-        if (holdFrames >= HOLD_THRESHOLD) {
-          selectedOuter = n;
-          flashPressed(outerGrid, n);
-          mode = 'inner';
-          modeChip.textContent = `モード: 内側 (外:${n})`;
-          holdFrames = 0;
-        }
-      } else {
-        // 内: 指の向き→% を計算して、1〜5のどのボタンでも「適用」
-        setActive(innerGrid, n);
-        const percent = percentFromTilt(landmarks);
-        pctChip.textContent = `%: ${percent}`;
-        if (n === lastCount) holdFrames++; else holdFrames = 1;
-        lastCount = n;
-        if (holdFrames >= HOLD_THRESHOLD) {
-          applyEffectValue(selectedOuter, percent);
-          flashPressed(innerGrid, n);
-          logEl.textContent = `適用: 外 ${selectedOuter} に ${percent}% を設定（内:${n}）`;
-          holdFrames = 0;
-        }
+      const grid = (active === 'sel1') ? sel1Grid : sel2Grid;
+      setActive(grid, n);
+
+      const percent = percentFromTilt(landmarks); // 上=0, 下=100
+      pctChip.textContent = `%: ${percent}`;
+
+      if (n === lastCount) holdFrames++; else holdFrames = 1;
+      lastCount = n;
+      if (holdFrames >= HOLD_THRESHOLD) {
+        applyEffectValue(n, percent);
+        flashPressed(grid, n);
+        logEl.textContent = `${active === 'sel1' ? '選択1' : '選択2'}: 効果${n} に ${percent}% を適用`;
+        holdFrames = 0;
       }
     }
 
@@ -308,7 +296,7 @@
         const n = countFingers(landmarks, handedness);
         processCount(n, landmarks);
       } else {
-        holdFrames = 0; lastCount = 0; setActive(outerGrid, 0); setActive(innerGrid, 0);
+        holdFrames = 0; lastCount = 0; setActive(sel1Grid, 0); setActive(sel2Grid, 0);
         countChip.textContent = '指: -'; pctChip.textContent = '%: -';
       }
       ctx.restore();
