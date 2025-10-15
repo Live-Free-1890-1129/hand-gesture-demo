@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hand Gesture Demo（安定版）</title>
+  <title>Hand Gesture Demo（外1〜5=効果選択／内=向きで%適用）</title>
   <style>
     :root { --bg:#0b1220; --panel:#0f172a; --line:#223; --txt:#e6e6e6; --muted:#9fb3c8; --chip:#142033; --accent:#9fdcff; }
+    * { box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif; margin: 0; background: var(--bg); color: var(--txt); }
     header { padding: 16px 20px; border-bottom: 1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    main { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px; }
+    main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
     .panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--muted); }
     .panel .body { padding: 12px 16px; }
@@ -17,6 +18,7 @@
     #video { transform: scaleX(-1); }
     #output { pointer-events:none; }
     .chip { display:inline-block; padding:4px 8px; border-radius:999px; background: var(--chip); color: var(--accent); font-size:12px; }
+
     .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
     .btn { border:1px solid #234; border-radius:12px; padding:12px 0; text-align:center; background:#0b1a2e; user-select:none; font-weight:600; }
     .btn.active { background:#12391a; border-color:#1f6f37; color:#b4f5c1; }
@@ -24,17 +26,19 @@
     .stack { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
     .small { font-size:12px; color: var(--muted); }
     .divider { height:1px; background:var(--line); margin:10px 0; }
+    .status { font-variant-numeric: tabular-nums; }
     .kv { display:grid; grid-template-columns: auto 1fr; gap:6px 10px; align-items:center; }
     .bar { height:8px; background:#122035; border:1px solid #233; border-radius:999px; overflow:hidden; }
     .bar > span { display:block; height:100%; background:#2b8cff; width:0%; }
+    @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header>
-    <strong>Hand Gesture Demo（安定版）</strong>
-    <span class="chip">選択1・選択2は独立</span>
-    <span class="chip">各 1〜5 = エフェクト種類</span>
-    <span id="modeChip" class="chip">操作対象: 選択1（握りこぶし1秒で切替／5秒で初期化）</span>
+    <strong>Hand Gesture Demo</strong>
+    <span class="chip">外側1〜5: 効果を選ぶ</span>
+    <span class="chip">内側1〜5: 指の向きで%決めて適用（上=0%／下=100%）</span>
+    <span id="modeChip" class="chip">モード: 外側（握りこぶし1秒で切替／5秒で初期化）</span>
   </header>
 
   <main>
@@ -47,7 +51,7 @@
         </div>
         <div class="stack">
           <button id="startBtn">カメラを開始</button>
-          <span id="status" class="chip">準備中</span>
+          <span id="status" class="chip status">準備中</span>
           <span id="countChip" class="chip">指: -</span>
           <span id="pctChip" class="chip">%: -</span>
           <button id="resetBtn">全リセット</button>
@@ -56,183 +60,277 @@
     </section>
 
     <aside class="panel">
-      <h2>選択1・選択2（独立）</h2>
+      <h2>メニュー（外側→内側で適用。設定は保持）</h2>
       <div class="body">
-        <div class="small">握りこぶし（0本）1秒で操作対象切替、5秒で全初期化。</div>
+        <div class="small">0本（握りこぶし）を<strong>1秒</strong>で内↔外切替、<strong>5秒</strong>で全初期化。<br>内側では、指の<strong>向き</strong>で<strong>0%（上）↔100%（下）</strong>を決め、1〜5のどれかを押して適用します。</div>
         <div class="divider"></div>
-        <div class="small">選択1</div>
-        <div id="sel1Grid" class="grid"></div>
+        <div class="small">外側メニュー（効果チャンネル）</div>
+        <div id="outerGrid" class="grid" aria-label="outer-buttons"></div>
         <div class="divider"></div>
-        <div class="small">選択2</div>
-        <div id="sel2Grid" class="grid"></div>
+        <div class="small">内側メニュー（適用トリガー）</div>
+        <div id="innerGrid" class="grid" aria-label="inner-buttons"></div>
         <div class="divider"></div>
         <div class="kv small">
-          <div>1: グレースケール</div><div class="bar"><span id="bar-gray"></span></div>
-          <div>2: セピア</div><div class="bar"><span id="bar-sepia"></span></div>
-          <div>3: 色相回転</div><div class="bar"><span id="bar-hue"></span></div>
-          <div>4: ぼかし</div><div class="bar"><span id="bar-blur"></span></div>
-          <div>5: コントラスト</div><div class="bar"><span id="bar-contrast"></span></div>
+          <div>グレースケール</div><div class="bar"><span id="bar-gray"></span></div>
+          <div>セピア</div><div class="bar"><span id="bar-sepia"></span></div>
+          <div>色相回転</div><div class="bar"><span id="bar-hue"></span></div>
+          <div>ぼかし</div><div class="bar"><span id="bar-blur"></span></div>
+          <div>コントラスト</div><div class="bar"><span id="bar-contrast"></span></div>
+          <div>明るさ</div><div class="bar"><span id="bar-bright"></span></div>
         </div>
+        <div class="divider"></div>
+        <div class="small" id="log">選択: なし（効果 すべて初期値）</div>
       </div>
     </aside>
   </main>
 
+  <footer class="small" style="padding:12px 16px; border-top:1px solid var(--line); color:var(--muted);">
+    実装: WebRTC (<code>getUserMedia</code>) + MediaPipe Hands。カメラ映像はローカル処理のみで外部送信しません。
+  </footer>
+
+  <!-- MediaPipe dependencies (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-  <script>
-    const videoEl=document.getElementById('video');
-    const canvasEl=document.getElementById('output');
-    const ctx=canvasEl.getContext('2d');
-    const statusEl=document.getElementById('status');
-    const startBtn=document.getElementById('startBtn');
-    const resetBtn=document.getElementById('resetBtn');
-    const countChip=document.getElementById('countChip');
-    const pctChip=document.getElementById('pctChip');
-    const sel1Grid=document.getElementById('sel1Grid');
-    const sel2Grid=document.getElementById('sel2Grid');
-    const modeChip=document.getElementById('modeChip');
 
-    const barEls={
-      gray:document.getElementById('bar-gray'),
-      sepia:document.getElementById('bar-sepia'),
-      hue:document.getElementById('bar-hue'),
-      blur:document.getElementById('bar-blur'),
-      contrast:document.getElementById('bar-contrast')
+  <script>
+    const videoEl = document.getElementById('video');
+    const canvasEl = document.getElementById('output');
+    const ctx = canvasEl.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const countChip = document.getElementById('countChip');
+    const pctChip = document.getElementById('pctChip');
+    const outerGrid = document.getElementById('outerGrid');
+    const innerGrid = document.getElementById('innerGrid');
+    const logEl = document.getElementById('log');
+    const modeChip = document.getElementById('modeChip');
+
+    const barEls = {
+      gray: document.getElementById('bar-gray'),
+      sepia: document.getElementById('bar-sepia'),
+      hue: document.getElementById('bar-hue'),
+      blur: document.getElementById('bar-blur'),
+      contrast: document.getElementById('bar-contrast'),
+      bright: document.getElementById('bar-bright'),
     };
 
-    function makeButtons(container,label){
-      container.innerHTML='';
-      for(let i=1;i<=5;i++){
-        const b=document.createElement('div');
-        b.className='btn';
-        b.dataset.value=i;
-        b.textContent=`${label==='sel1'?'選1':'選2'}:${i}`;
+    // ===== UI 準備 =====
+    function makeButtons(container, prefix) {
+      container.innerHTML = '';
+      for (let i=1;i<=5;i++) {
+        const b = document.createElement('div');
+        b.className = 'btn';
+        b.dataset.value = i;
+        b.id = `${prefix}-${i}`;
+        b.textContent = `${prefix === 'outer' ? '外' : '内'}:${i}`;
         container.appendChild(b);
       }
     }
-    makeButtons(sel1Grid,'sel1');
-    makeButtons(sel2Grid,'sel2');
+    makeButtons(outerGrid, 'outer');
+    makeButtons(innerGrid, 'inner');
 
-    function resize(){
-      const r=document.getElementById('stage').getBoundingClientRect();
-      canvasEl.width=r.width;canvasEl.height=r.height;
+    function setActive(container, n) {
+      Array.from(container.children).forEach(el => {
+        el.classList.toggle('active', Number(el.dataset.value) === n);
+      });
     }
-    window.addEventListener('resize',resize);
-
-    function isFingerUp(tip,pip){return tip.y<pip.y-0.04;}
-    function isThumbUp(lm,hand){
-      const tip=lm[4],ip=lm[3];
-      const isRight=hand==='Right';
-      const diff=isRight?ip.x-tip.x:tip.x-ip.x;
-      return diff>0.04;
-    }
-    function countFingers(lm,hand){
-      let c=0;
-      if(isThumbUp(lm,hand))c++;
-      if(isFingerUp(lm[8],lm[6]))c++;
-      if(isFingerUp(lm[12],lm[10]))c++;
-      if(isFingerUp(lm[16],lm[14]))c++;
-      if(isFingerUp(lm[20],lm[18]))c++;
-      return c;
-    }
-    function percentFromTilt(lm){
-      const wrist=lm[0],tip=lm[8];
-      const t=(tip.y-(wrist.y-0.2))/(0.4);
-      return Math.round(Math.max(0,Math.min(1,t))*100);
+    function flashPressed(container, n) {
+      const el = Array.from(container.children).find(e => Number(e.dataset.value) === n);
+      if (!el) return;
+      el.classList.add('pressed');
+      setTimeout(()=> el.classList.remove('pressed'), 250);
     }
 
-    let active='sel1';
-    let holdFrames=0,lastCount=0,fistFrames=0;
-    const HOLD_THRESHOLD=28,FIST_TOGGLE=60,FIST_RESET=300;
-    const fingerHistory=[],SMOOTH_FRAMES=7;
-    const effects={grayscale:0,sepia:0,hue:0,blur:0,contrast:0};
+    // ===== レイアウト調整 =====
+    function resize() {
+      const rect = document.getElementById('stage').getBoundingClientRect();
+      canvasEl.width = rect.width; canvasEl.height = rect.height;
+    }
+    window.addEventListener('resize', resize);
 
-    function stableCount(n){
-      fingerHistory.push(n);
-      if(fingerHistory.length>SMOOTH_FRAMES)fingerHistory.shift();
-      const freq={};
-      fingerHistory.forEach(v=>freq[v]=(freq[v]||0)+1);
-      return Number(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
+    // ===== 指カウント（同じ）＋ 向き→% =====
+    function isFingerUp(tip, pip) { return tip.y < pip.y - 0.02; }
+    function isThumbUp(landmarks, handedness) {
+      const tip = landmarks[4]; const ip  = landmarks[3];
+      const isRight = handedness === 'Right';
+      return isRight ? (tip.x < ip.x - 0.02) : (tip.x > ip.x + 0.02);
+    }
+    function countFingers(landmarks, handedness) {
+      let count = 0;
+      if (isThumbUp(landmarks, handedness)) count++;
+      if (isFingerUp(landmarks[8], landmarks[6])) count++;
+      if (isFingerUp(landmarks[12], landmarks[10])) count++;
+      if (isFingerUp(landmarks[16], landmarks[14])) count++;
+      if (isFingerUp(landmarks[20], landmarks[18])) count++;
+      return count;
+    }
+    function percentFromTilt(landmarks) {
+      const wrist = landmarks[0];
+      const tip = landmarks[8];
+      const minY = wrist.y - 0.2, maxY = wrist.y + 0.2; // 上 = 0%, 下 = 100%
+      const t = (tip.y - minY) / (maxY - minY);
+      const clamped = Math.max(0, Math.min(1, t));
+      return Math.round(clamped * 100);
     }
 
-    function updateBars(){
-      barEls.gray.style.width=effects.grayscale+'%';
-      barEls.sepia.style.width=effects.sepia+'%';
-      barEls.hue.style.width=effects.hue+'%';
-      barEls.blur.style.width=effects.blur+'%';
-      barEls.contrast.style.width=effects.contrast+'%';
-    }
-    resetBtn.onclick=()=>{Object.keys(effects).forEach(k=>effects[k]=0);updateBars();};
+    // ===== 状態 =====
+    let mode = 'outer'; // 'outer' or 'inner'
+    let selectedOuter = null; // 1..5
+    let holdFrames = 0; // 数字ホールド
+    const HOLD_THRESHOLD = 18; // ~0.3秒
+    let lastCount = 0;
 
-    function applyEffectValue(ch,p){
-      switch(ch){
-        case 1:effects.grayscale=p;break;
-        case 2:effects.sepia=p;break;
-        case 3:effects.hue=p;break;
-        case 4:effects.blur=p;break;
-        case 5:effects.contrast=p;break;
+    let fistFrames = 0; // 握りこぶし連続フレーム
+    const FIST_TOGGLE = 60; // 1秒
+    const FIST_RESET = 300; // 5秒
+
+    // エフェクト合成（0..100%）
+    const effects = { grayscale: 0, sepia: 0, hue: 0, blur: 0, contrast: 0, brightness: 100 };
+
+    function updateBars() {
+      barEls.gray.style.width = effects.grayscale + '%';
+      barEls.sepia.style.width = effects.sepia + '%';
+      barEls.hue.style.width = effects.hue + '%';
+      barEls.blur.style.width = effects.blur + '%';
+      barEls.contrast.style.width = effects.contrast + '%';
+      barEls.bright.style.width = effects.brightness + '%';
+    }
+
+    function resetAll() {
+      mode = 'outer';
+      selectedOuter = null;
+      setActive(outerGrid, 0);
+      setActive(innerGrid, 0);
+      effects.grayscale = 0;
+      effects.sepia = 0;
+      effects.hue = 0;
+      effects.blur = 0;
+      effects.contrast = 0;
+      effects.brightness = 100;
+      modeChip.textContent = 'モード: 外側（握りこぶし1秒で切替／5秒で初期化）';
+      logEl.textContent = '選択: なし（効果 すべて初期値）';
+      updateBars();
+    }
+
+    resetBtn.addEventListener('click', resetAll);
+
+    function applyEffectValue(channel, percent) {
+      switch(channel){
+        case 1: effects.grayscale = percent; break;            // 0..100%
+        case 2: effects.sepia = percent; break;                // 0..100%
+        case 3: effects.hue = percent; break;                  // 0..100% → 0..240deg
+        case 4: effects.blur = percent; break;                 // 0..100% → 0..6px
+        case 5: effects.contrast = percent;                    // 0..100% → 1.0..2.0
+                effects.brightness = Math.max(80, Math.min(120, 80 + Math.round(percent*0.4))); // 0.8..1.2
+                break;
+        default: break;
       }
       updateBars();
     }
 
-    function processCount(n,lm){
-      countChip.textContent=`指:${n}`;
-      if(n===0){
+    function processCount(n, landmarks) {
+      countChip.textContent = `指: ${n}`;
+
+      // 0本（握りこぶし）: モード切替/初期化
+      if (n === 0) {
         fistFrames++;
-        holdFrames=0;
-        if(fistFrames>=FIST_RESET){Object.keys(effects).forEach(k=>effects[k]=0);updateBars();fistFrames=0;return;}
-        if(fistFrames===FIST_TOGGLE){
-          active=active==='sel1'?'sel2':'sel1';
-          modeChip.textContent=`操作対象:${active==='sel1'?'選択1':'選択2'}`;
+        holdFrames = 0; // 数字ホールドはリセット
+        lastCount = 0;
+        if (fistFrames >= FIST_RESET) { resetAll(); fistFrames = 0; return; }
+        if (fistFrames === FIST_TOGGLE) {
+          if (mode === 'outer' && selectedOuter != null) { mode = 'inner'; modeChip.textContent = `モード: 内側 (外:${selectedOuter})`; }
+          else { mode = 'outer'; modeChip.textContent = 'モード: 外側（握りこぶし1秒で切替／5秒で初期化）'; setActive(innerGrid,0); }
+          logEl.textContent = (mode==='outer') ? 'モード切替: 外側へ' : 'モード切替: 内側へ';
         }
         return;
-      }else{fistFrames=0;}
+      } else { fistFrames = 0; }
 
-      if(n<1||n>5){holdFrames=0;lastCount=n;return;}
-      const grid=active==='sel1'?sel1Grid:sel2Grid;
-      const pct=percentFromTilt(lm);
-      pctChip.textContent=`%:${pct}`;
-      if(n===lastCount)holdFrames++;else holdFrames=0;
-      lastCount=n;
-      if(holdFrames>=HOLD_THRESHOLD){
-        applyEffectValue(n,pct);
-        holdFrames=0;
+      if (n < 1 || n > 5) { holdFrames = 0; setActive(outerGrid, 0); setActive(innerGrid, 0); lastCount = n; return; }
+
+      if (mode === 'outer') {
+        // 外: チャンネル選択
+        setActive(outerGrid, n);
+        if (n === lastCount) holdFrames++; else holdFrames = 1;
+        lastCount = n;
+        if (holdFrames >= HOLD_THRESHOLD) {
+          selectedOuter = n;
+          flashPressed(outerGrid, n);
+          mode = 'inner';
+          modeChip.textContent = `モード: 内側 (外:${n})`;
+          holdFrames = 0;
+        }
+      } else {
+        // 内: 指の向き→% を計算して、1〜5のどのボタンでも「適用」
+        setActive(innerGrid, n);
+        const percent = percentFromTilt(landmarks);
+        pctChip.textContent = `%: ${percent}`;
+        if (n === lastCount) holdFrames++; else holdFrames = 1;
+        lastCount = n;
+        if (holdFrames >= HOLD_THRESHOLD) {
+          applyEffectValue(selectedOuter, percent);
+          flashPressed(innerGrid, n);
+          logEl.textContent = `適用: 外 ${selectedOuter} に ${percent}% を設定（内:${n}）`;
+          holdFrames = 0;
+        }
       }
     }
 
-    function computeFilter(e){
-      return`grayscale(${e.grayscale/100}) sepia(${e.sepia/100}) hue-rotate(${e.hue*2.4}deg) blur(${e.blur*0.06}px) contrast(${1+e.contrast/100})`;
+    // === 映像への合成フィルタ ===
+    function computeFilter(e) {
+      const gray = `grayscale(${(e.grayscale/100).toFixed(2)})`;
+      const sep = `sepia(${(e.sepia/100).toFixed(2)})`;
+      const hue = `hue-rotate(${Math.round(e.hue * 2.4)}deg) saturate(1.1)`; // 0..240deg
+      const blur = `blur(${(e.blur*0.06).toFixed(2)}px)`; // 0..6px
+      const con = `contrast(${(1.0 + e.contrast/100).toFixed(2)})`;
+      const bri = `brightness(${(e.brightness/100).toFixed(2)})`;
+      return [gray, sep, hue, blur, con, bri].join(' ');
     }
 
-    const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.7,minTrackingConfidence:0.7});
-    hands.onResults(r=>{
+    // ===== MediaPipe Hands 設定 =====
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+    function onResults(results) {
       resize();
-      ctx.save();ctx.scale(-1,1);ctx.translate(-canvasEl.width,0);
-      ctx.filter=computeFilter(effects);
-      ctx.drawImage(r.image,0,0,canvasEl.width,canvasEl.height);
-      ctx.filter='none';
-      if(r.multiHandLandmarks?.length){
-        const lm=r.multiHandLandmarks[0];
-        const hand=r.multiHandedness?.[0]?.label||'Right';
-        const c=countFingers(lm,hand);
-        const s=stableCount(c);
-        processCount(s,lm);
-        drawConnectors(ctx,lm,HAND_CONNECTIONS,{lineWidth:3});
-        drawLandmarks(ctx,lm,{radius:3});
+      ctx.save(); ctx.scale(-1,1); ctx.translate(-canvasEl.width,0);
+      // フィルタ合成
+      ctx.filter = computeFilter(effects);
+      ctx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
+      ctx.filter = 'none';
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
+        const landmarks = results.multiHandLandmarks[0];
+        const handedness = (results.multiHandedness && results.multiHandedness[0] && results.multiHandedness[0].label) || 'Right';
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { lineWidth: 3 });
+        drawLandmarks(ctx, landmarks, { radius: 3 });
+        const n = countFingers(landmarks, handedness);
+        processCount(n, landmarks);
+      } else {
+        holdFrames = 0; lastCount = 0; setActive(outerGrid, 0); setActive(innerGrid, 0);
+        countChip.textContent = '指: -'; pctChip.textContent = '%: -';
       }
       ctx.restore();
-    });
+    }
+
+    hands.onResults(onResults);
 
     let camera;
-    startBtn.onclick=async()=>{
-      statusEl.textContent='カメラ起動中…';
-      camera=new Camera(videoEl,{onFrame:async()=>await hands.send({image:videoEl}),width:640,height:480});
-      await camera.start();
-      statusEl.textContent='稼働中';
-      startBtn.disabled=true;
-    };
+    async function startCamera() {
+      try {
+        statusEl.textContent = 'カメラ起動中…';
+        camera = new Camera(videoEl, { onFrame: async () => { await hands.send({ image: videoEl }); }, width: 640, height: 480 });
+        await camera.start();
+        statusEl.textContent = '稼働中';
+        startBtn.disabled = true;
+      } catch (e) { console.error(e); statusEl.textContent = '起動エラー: ' + (e.message || e); }
+    }
+
+    startBtn.addEventListener('click', startCamera);
+
+    // 初期状態
+    resetAll();
   </script>
 </body>
 </html>
