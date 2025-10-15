@@ -3,18 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hand Gesture Demo（超安定版）</title>
+  <title>Hand Gesture Demo（超安定版 v2）</title>
   <style>
     :root { --bg:#0b1220; --panel:#0f172a; --line:#223; --txt:#e6e6e6; --muted:#9fb3c8; --chip:#142033; --accent:#9fdcff; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, sans-serif; margin: 0; background: var(--bg); color: var(--txt); }
     header { padding: 16px 20px; border-bottom: 1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    main { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px; }
+    main { display: grid; grid-template-columns: 1fr 420px; gap: 16px; padding: 16px; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
     .panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--muted); }
     .panel .body { padding: 12px 16px; }
     #stage { position: relative; aspect-ratio: 4/3; background: #000; }
     #output, #video { position: absolute; inset: 0; width: 100%; height: 100%; }
     #video { transform: scaleX(-1); }
+    #output { pointer-events:none; }
     .chip { display:inline-block; padding:4px 8px; border-radius:999px; background: var(--chip); color: var(--accent); font-size:12px; }
     .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
     .btn { border:1px solid #234; border-radius:12px; padding:12px 0; text-align:center; background:#0b1a2e; user-select:none; font-weight:600; }
@@ -23,15 +24,17 @@
     .stack { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
     .small { font-size:12px; color: var(--muted); }
     .divider { height:1px; background:var(--line); margin:10px 0; }
+    .kv { display:grid; grid-template-columns: auto 1fr; gap:6px 10px; align-items:center; }
     .bar { height:8px; background:#122035; border:1px solid #233; border-radius:999px; overflow:hidden; }
     .bar > span { display:block; height:100%; background:#2b8cff; width:0%; }
   </style>
 </head>
 <body>
   <header>
-    <strong>Hand Gesture Demo（超安定版）</strong>
+    <strong>Hand Gesture Demo（超安定版 v2）</strong>
     <span class="chip">選択1・選択2は独立</span>
     <span id="modeChip" class="chip">操作対象: 選択1</span>
+    <span id="debugChip" class="chip">raw:- / stable:- / hold:0/--</span>
   </header>
 
   <main>
@@ -47,7 +50,7 @@
           <span id="status" class="chip">準備中</span>
           <span id="countChip" class="chip">指: -</span>
           <span id="pctChip" class="chip">%: -</span>
-          <button id="resetBtn">リセット</button>
+          <button id="resetBtn">全リセット</button>
         </div>
       </div>
     </section>
@@ -55,16 +58,20 @@
     <aside class="panel">
       <h2>選択1・選択2</h2>
       <div class="body">
+        <div class="small">握りこぶし（0本）1秒で操作対象切替、5秒で全初期化。</div>
+        <div class="divider"></div>
+        <div class="small">選択1</div>
         <div id="sel1Grid" class="grid"></div>
         <div class="divider"></div>
+        <div class="small">選択2</div>
         <div id="sel2Grid" class="grid"></div>
         <div class="divider"></div>
         <div class="kv small">
-          <div>グレースケール</div><div class="bar"><span id="bar-gray"></span></div>
-          <div>セピア</div><div class="bar"><span id="bar-sepia"></span></div>
-          <div>色相回転</div><div class="bar"><span id="bar-hue"></span></div>
-          <div>ぼかし</div><div class="bar"><span id="bar-blur"></span></div>
-          <div>コントラスト</div><div class="bar"><span id="bar-contrast"></span></div>
+          <div>1: グレースケール</div><div class="bar"><span id="bar-gray"></span></div>
+          <div>2: セピア</div><div class="bar"><span id="bar-sepia"></span></div>
+          <div>3: 色相回転</div><div class="bar"><span id="bar-hue"></span></div>
+          <div>4: ぼかし</div><div class="bar"><span id="bar-blur"></span></div>
+          <div>5: コントラスト</div><div class="bar"><span id="bar-contrast"></span></div>
         </div>
       </div>
     </aside>
@@ -79,12 +86,12 @@
      * 🧭 ===== 調整ここから（必要に応じて変更OK） =====
      ********************************************************************/
     const PARAMS = {
-      SMOOTH_FRAMES: 10,   // 👈 平滑化フレーム数（増やすほど安定・遅延大）
-      HOLD_THRESHOLD: 28,  // 👈 確定ホールド時間（フレーム）
+      SMOOTH_FRAMES: 9,    // 👈 平滑化フレーム数（増やすほど安定・遅延増）
+      HOLD_THRESHOLD: 22,  // 👈 確定ホールド時間（フレーム）
       FIST_TOGGLE: 60,     // 👈 握りこぶしで対象切替 1秒
       FIST_RESET: 300,     // 👈 握りこぶし5秒で全リセット
       FINGER_DIFF: 0.045,  // 👈 指の上げ下げ閾値（感度）
-      DEBOUNCE_FRAMES: 10  // 👈 値変更後、10フレーム固定
+      DEBOUNCE_FRAMES: 6   // 👈 値変更後、6フレーム固定
     };
     /********************************************************************
      * 🧭 ===== 調整ここまで =====
@@ -98,8 +105,10 @@
     const countChip=document.getElementById('countChip');
     const pctChip=document.getElementById('pctChip');
     const modeChip=document.getElementById('modeChip');
+    const debugChip=document.getElementById('debugChip');
     const sel1Grid=document.getElementById('sel1Grid');
     const sel2Grid=document.getElementById('sel2Grid');
+
     const barEls={
       gray:document.getElementById('bar-gray'),
       sepia:document.getElementById('bar-sepia'),
@@ -110,6 +119,7 @@
 
     // UI
     function makeButtons(container,label){
+      container.innerHTML='';
       for(let i=1;i<=5;i++){
         const b=document.createElement('div');
         b.className='btn';
@@ -121,113 +131,115 @@
     makeButtons(sel1Grid,'sel1');
     makeButtons(sel2Grid,'sel2');
 
+    function setActive(container,n){
+      Array.from(container.children).forEach(el=>{
+        el.classList.toggle('active', Number(el.dataset.value)===n);
+      });
+    }
+    function flashPressed(container,n){
+      const el=Array.from(container.children).find(e=>Number(e.dataset.value)===n);
+      if(!el) return; el.classList.add('pressed'); setTimeout(()=>el.classList.remove('pressed'),220);
+    }
+
     function resize(){const r=document.getElementById('stage').getBoundingClientRect();canvasEl.width=r.width;canvasEl.height=r.height;}
     window.addEventListener('resize',resize);
 
     // 指判定
     function isFingerUp(tip,pip){return tip.y<pip.y-PARAMS.FINGER_DIFF;}
     function isThumbUp(lm,hand){
-      const tip=lm[4],ip=lm[3];const isRight=hand==='Right';
-      const diff=isRight?ip.x-tip.x:tip.x-ip.x;
-      return diff>PARAMS.FINGER_DIFF;
+      const tip=lm[4],ip=lm[3]; const isRight=hand==='Right';
+      const diff=isRight?ip.x-tip.x:tip.x-ip.x; return diff>PARAMS.FINGER_DIFF;
     }
     function countFingers(lm,hand){
-      let c=0;
-      if(isThumbUp(lm,hand))c++;
-      if(isFingerUp(lm[8],lm[6]))c++;
-      if(isFingerUp(lm[12],lm[10]))c++;
-      if(isFingerUp(lm[16],lm[14]))c++;
-      if(isFingerUp(lm[20],lm[18]))c++;
+      let c=0; if(isThumbUp(lm,hand))c++;
+      if(isFingerUp(lm[8],lm[6]))c++; if(isFingerUp(lm[12],lm[10]))c++;
+      if(isFingerUp(lm[16],lm[14]))c++; if(isFingerUp(lm[20],lm[18]))c++;
       return c;
     }
 
     // 平滑化 + デバウンス
-    const fingerHistory=[];
-    let lastStable=0,deBounceCounter=0;
+    const fingerHistory=[]; let lastStable=0, deBounce=0;
     function stableCount(newVal){
-      fingerHistory.push(newVal);
-      if(fingerHistory.length>PARAMS.SMOOTH_FRAMES)fingerHistory.shift();
-      const sorted=[...fingerHistory].sort((a,b)=>a-b);
-      const median=sorted[Math.floor(sorted.length/2)];
+      fingerHistory.push(newVal); if(fingerHistory.length>PARAMS.SMOOTH_FRAMES) fingerHistory.shift();
+      const sorted=[...fingerHistory].sort((a,b)=>a-b); const median=sorted[Math.floor(sorted.length/2)]||newVal;
       const freq={}; fingerHistory.forEach(v=>freq[v]=(freq[v]||0)+1);
       const mode=Number(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
       const smoothed=Math.round((median+mode)/2);
-      if(deBounceCounter>0){deBounceCounter--;return lastStable;}
-      if(smoothed!==lastStable){lastStable=smoothed;deBounceCounter=PARAMS.DEBOUNCE_FRAMES;}
+      if(deBounce>0){deBounce--; return lastStable;}
+      if(smoothed!==lastStable){ lastStable=smoothed; deBounce=PARAMS.DEBOUNCE_FRAMES; }
       return lastStable;
     }
 
     function percentFromTilt(lm){
-      const wrist=lm[0],tip=lm[8];
-      const t=(tip.y-(wrist.y-0.2))/0.4;
-      return Math.round(Math.max(0,Math.min(1,t))*100);
+      const wrist=lm[0], tip=lm[8];
+      const t=(tip.y-(wrist.y-0.2))/0.4; return Math.round(Math.max(0,Math.min(1,t))*100);
     }
 
     // 状態
-    let active='sel1',hold=0,lastCount=0,fist=0;
+    let active='sel1', hold=0, lastCount=0, fist=0;
     const effects={grayscale:0,sepia:0,hue:0,blur:0,contrast:0};
 
-    function updateBars(){
-      for(const k in effects){const el=barEls[k];if(el)el.style.width=effects[k]+'%';}
-    }
+    function updateBars(){ for(const k in effects){ const el=barEls[k]; if(el) el.style.width=effects[k]+'%'; } }
 
     function applyEffectValue(ch,p){
-      switch(ch){
-        case 1:effects.grayscale=p;break;
-        case 2:effects.sepia=p;break;
-        case 3:effects.hue=p;break;
-        case 4:effects.blur=p;break;
-        case 5:effects.contrast=p;break;
-      }updateBars();
+      switch(ch){ case 1:effects.grayscale=p;break; case 2:effects.sepia=p;break; case 3:effects.hue=p;break; case 4:effects.blur=p;break; case 5:effects.contrast=p;break; }
+      updateBars();
     }
 
-    function processCount(n,lm){
-      countChip.textContent=`指:${n}`;
-      if(n===0){
-        fist++;
-        if(fist>=PARAMS.FIST_RESET){for(const k in effects)effects[k]=0;updateBars();fist=0;}
-        if(fist===PARAMS.FIST_TOGGLE){active=active==='sel1'?'sel2':'sel1';modeChip.textContent=`操作対象:${active==='sel1'?'選択1':'選択2'}`;}
-        return;
-      }else{fist=0;}
+    function processCount(rawN, stableN, lm){
+      countChip.textContent=`指:${stableN}`;
+      debugChip.textContent=`raw:${rawN} / stable:${stableN} / hold:${hold}/${PARAMS.HOLD_THRESHOLD}`;
 
-      const grid=active==='sel1'?sel1Grid:sel2Grid;
-      const pct=percentFromTilt(lm);
-      pctChip.textContent=`%:${pct}`;
-      if(n===lastCount)hold++;else hold=0;
-      lastCount=n;
-      if(hold>=PARAMS.HOLD_THRESHOLD){
-        applyEffectValue(n,pct);
-        hold=0;
-      }
+      if(stableN===0){
+        fist++; hold=0; lastCount=0;
+        if(fist>=PARAMS.FIST_RESET){ for(const k in effects) effects[k]=0; updateBars(); fist=0; }
+        else if(fist===PARAMS.FIST_TOGGLE){ active=(active==='sel1')?'sel2':'sel1'; modeChip.textContent=`操作対象: ${active==='sel1'?'選択1':'選択2'}`; }
+        return;
+      } else { fist=0; }
+
+      if(stableN<1||stableN>5){ hold=0; lastCount=stableN; return; }
+
+      const grid=active==='sel1'?sel1Grid:sel2Grid; setActive(grid, stableN);
+      const pct=percentFromTilt(lm); pctChip.textContent=`%:${pct}`;
+
+      if(stableN===lastCount) hold++; else hold=0; // 変動中は確定しない
+      lastCount=stableN;
+      if(hold>=PARAMS.HOLD_THRESHOLD){ applyEffectValue(stableN, pct); flashPressed(grid, stableN); hold=0; }
     }
 
     // フィルタ合成
-    function computeFilter(e){return`grayscale(${e.grayscale/100}) sepia(${e.sepia/100}) hue-rotate(${e.hue*2.4}deg) blur(${e.blur*0.06}px) contrast(${1+e.contrast/100})`; }
+    function computeFilter(e){ return `grayscale(${e.grayscale/100}) sepia(${e.sepia/100}) hue-rotate(${e.hue*2.4}deg) blur(${e.blur*0.06}px) contrast(${1+e.contrast/100})`; }
 
     // MediaPipe設定
     const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.8,minTrackingConfidence:0.8});
-    hands.onResults(r=>{
-      resize();ctx.save();ctx.scale(-1,1);ctx.translate(-canvasEl.width,0);
-      ctx.filter=computeFilter(effects);
-      ctx.drawImage(r.image,0,0,canvasEl.width,canvasEl.height);ctx.filter='none';
-      if(r.multiHandLandmarks?.length){
-        const lm=r.multiHandLandmarks[0];
-        const hand=r.multiHandedness?.[0]?.label||'Right';
-        const c=countFingers(lm,hand);
-        const s=stableCount(c);
-        processCount(s,lm);
-        drawConnectors(ctx,lm,HAND_CONNECTIONS,{lineWidth:3});
-        drawLandmarks(ctx,lm,{radius:3});
+    hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.8,minTrackingConfidence:0.85});
+
+    function onResults(r){
+      const rect=document.getElementById('stage').getBoundingClientRect(); canvasEl.width=rect.width; canvasEl.height=rect.height;
+      ctx.save(); ctx.scale(-1,1); ctx.translate(-canvasEl.width,0);
+      ctx.filter=computeFilter(effects); ctx.drawImage(r.image,0,0,canvasEl.width,canvasEl.height); ctx.filter='none';
+
+      if(r.multiHandLandmarks && r.multiHandLandmarks.length){
+        const lm=r.multiHandLandmarks[0]; const hand=r.multiHandedness?.[0]?.label||'Right';
+        const raw=countFingers(lm,hand); const stable=stableCount(raw);
+        processCount(raw, stable, lm);
+        drawConnectors(ctx,lm,HAND_CONNECTIONS,{lineWidth:3}); drawLandmarks(ctx,lm,{radius:3});
+      } else {
+        // 手が消えたら状態を緩やかに解放
+        hold=0; // 維持はしない
       }
       ctx.restore();
-    });
+    }
+    hands.onResults(onResults);
 
     startBtn.onclick=async()=>{
       statusEl.textContent='カメラ起動中…';
-      const cam=new Camera(videoEl,{onFrame:async()=>await hands.send({image:videoEl}),width:640,height:480});
-      await cam.start();statusEl.textContent='稼働中';startBtn.disabled=true;
+      const cam=new Camera(videoEl,{onFrame:async()=>{ await hands.send({image:videoEl}); }, width:640, height:480});
+      await cam.start(); statusEl.textContent='稼働中'; startBtn.disabled=true;
     };
+
+    // 初期バー
+    updateBars();
   </script>
 </body>
 </html>
